@@ -45,6 +45,9 @@ public class PeoplesoftFaultMessageResolver extends SoapFaultMessageResolver imp
             try {
                 faultObjectResolver.resolveFault(soapMessage, marshaller.unmarshal(faultSource));
             } catch (XmlMappingException e) {
+                //Unmarshalling failures unfortunately will happen when there is a low level fault from peoplesoft
+                //because the custom fault object root node will not be present.
+                //We capture the exception but continue with our backup way of getting the error message below.
                 suppressedException = e;
             }
         }
@@ -59,9 +62,9 @@ public class PeoplesoftFaultMessageResolver extends SoapFaultMessageResolver imp
         String errMsg = messageId == null ? "Unable to unmarshal or decode webservice exception"
                 : String.format("MessageID: %s, StatusCode: %s, DefaultMessage: %s", messageId, statusCode, defaultMessage);
 
-        IOException ioe = new IOException(errMsg, new SoapFaultClientException(soapMessage));
-        if(suppressedException!=null) ioe.addSuppressed(suppressedException);
-        throw ioe;
+        SoapFaultClientException sfce = new SoapFaultClientException(soapMessage);
+        if(suppressedException!=null) sfce.initCause(suppressedException); //We don't want to totally lose track of any unmarshalling exception
+        throw new IOException(errMsg, sfce);
     }
 
     private String getValueFromFirstNodeWithName(String name, Node node) {
